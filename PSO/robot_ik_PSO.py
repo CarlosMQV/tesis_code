@@ -250,25 +250,31 @@ def pso_solve(DH, TARGET, c1, c2, w, particles=n_particles,
     vel = rng.uniform(-0.1, 0.1, (m, n))
     pbest = pos.copy()
     pbest_cost = scores
+    pbest_pos_err = scores_pos.copy()
+    pbest_ori_err = scores_ori.copy()
     idx_min = int(np.argmin(pbest_cost))
     gbest = pbest[idx_min].copy()
     gbest_cost = float(pbest_cost[idx_min])
+    gbest_pos_err = float(pbest_pos_err[idx_min])
+    gbest_ori_err = float(pbest_ori_err[idx_min])
     lo_row = lo[np.newaxis, :]; hi_row = hi[np.newaxis, :]
     for it in range(max_it):
         cur_costs, cur_pos_err, cur_ori_err = cost(DH, pos, TARGET)
         improve_mask = cur_costs < pbest_cost
         if np.any(improve_mask):
             pbest_cost[improve_mask] = cur_costs[improve_mask]
+            pbest_pos_err[improve_mask] = cur_pos_err[improve_mask]
+            pbest_ori_err[improve_mask] = cur_ori_err[improve_mask]
             pbest[improve_mask, :] = pos[improve_mask, :]
         idx = int(np.argmin(pbest_cost))
         if pbest_cost[idx] < gbest_cost:
             gbest_cost = float(pbest_cost[idx])
+            gbest_pos_err = float(pbest_pos_err[idx])
+            gbest_ori_err = float(pbest_ori_err[idx])
             gbest = pbest[idx].copy()
-        g_cost, g_pos, g_ori = cost(DH, gbest[np.newaxis, :], TARGET)
-        pos_norm = float(g_pos[0]); ori_norm = float(g_ori[0])
-        if (pos_norm <= tol_pos) and (ori_norm <= tol_ori):
+        if (gbest_pos_err <= tol_pos) and (gbest_ori_err <= tol_ori):
             elapsed = time.perf_counter() - t0
-            return gbest, 1, pos_norm, ori_norm, it+1, elapsed
+            return gbest, 1, gbest_pos_err, gbest_ori_err, it+1, elapsed
         r1 = rng.random((m, n)); r2 = rng.random((m, n))
         gbest_row = gbest[np.newaxis, :]
         vel *= w
@@ -279,9 +285,8 @@ def pso_solve(DH, TARGET, c1, c2, w, particles=n_particles,
         mask_bound = (pos == lo_row) | (pos == hi_row)
         if np.any(mask_bound):
             vel[mask_bound] = 0.0
-    g_cost, g_pos, g_ori = cost(DH, gbest[np.newaxis, :], TARGET)
     elapsed = time.perf_counter() - t0
-    return gbest, 0, float(g_pos[0]), float(g_ori[0]), max_it, elapsed
+    return gbest, 0, gbest_pos_err, gbest_ori_err, max_it, elapsed
 
 def main():
     for robot in robots:
