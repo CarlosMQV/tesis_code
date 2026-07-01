@@ -248,26 +248,6 @@ def svd_solve(DH, q0, T_des, lam, tol_pos=TOL_POS, tol_ori=TOL_ORI, max_it=MAX_I
     return q, 0, pos_norm, ori_norm_q, max_it, time.perf_counter() - t0
 
 def main():
-    for robot in ["antro"]:
-        DHfile = f"DH_{robot}.csv"
-        DH = load_csv(DHfile)
-        lam = LAM_ROBOT.get(robot)
-        for mode in ["easy"]:
-            TARGETfile = f"TARGETS/TARGET_{robot}_{mode}.csv"
-            LOGfile = f"SVD/log_{robot}_{mode}.csv"
-            if os.path.exists(LOGfile): os.remove(LOGfile)
-            Trows = load_csv(TARGETfile)
-            Tlist = [row_to_T(Trows[i,:12]) for i in range(Trows.shape[0])]
-            q0 = np.zeros(DH.shape[0])
-            for i, Tt in enumerate(Tlist, 1):
-                qf, conv, pos, ori, its, elapsed = svd_solve(DH, q0, Tt, lam)
-                Jf = JAC(DH, qf)
-                mu, kappa = manip(Jf)
-                dvs = dq_variations(DH, q0, qf)
-                log_row(LOGfile, conv, pos, ori, its, elapsed, mu, kappa, dvs)
-                print(f"Pose {i}/{len(Tlist)}: conv={conv} n_iter={its}")
-            print(f"{robot} {mode} -> {LOGfile}")
-
     for robot in robots:
         DHfile = f"DH_{robot}.csv"
         DH = load_csv(DHfile)
