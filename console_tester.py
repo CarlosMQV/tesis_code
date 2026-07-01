@@ -1,209 +1,160 @@
-import os, csv, math
-import numpy as np
+"""
+Analisis de resultados de convergencia para los solvers IK (PSO, QPSO, SVD, HYBRID).
+No ejecuta ningun algoritmo, solo lee los CSV de log ya generados.
 
-robots = ["antro", "Standford", "DLR"]
-modes = ["easy", "hard"]
-LOG_DIR = "QPSO"
-DH_CANDIDATE_PATHS = ["../DH_{r}.csv", "DH_{r}.csv"]
+Estructura esperada (este script debe estar al mismo nivel):
+    {PSO, QPSO, SVD, HYBRID}/{e2, e3}/log_{robot}_{mode}.csv
 
-EPS = 1e-9
+Carpetas o archivos vacios, inexistentes o con columnas/valores invalidos
+se omiten sin detener la ejecucion, y se listan al final en OMITIDOS.
+"""
 
-def load_csv_with_header(path):
-    with open(path, "r", newline='') as f:
-        r = csv.reader(f)
-        header = next(r)
-        data = []
-        for row in r:
-            if not row:
-                continue
-            data.append([float(x) for x in row])
-    if len(data) == 0:
-        return header, np.zeros((0, len(header)))
-    arr = np.array(data, dtype=float)
-    return header, arr
+import os
+import csv
+import statistics
 
-def load_DH_try(robot):
-    for p in DH_CANDIDATE_PATHS:
-        path = p.format(r=robot)
-        if os.path.exists(path):
-            d = np.genfromtxt(path, delimiter=',', dtype=float)
-            return d.reshape(1, -1) if d.ndim == 1 else d
-    return None
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-def infer_joint_types_from_DH(DH):
-    n = int(DH.shape[0])
-    types = []
-    for i in range(n):
-        th, d, a, al = DH[i]
-        if math.isnan(th) and (not math.isnan(d)):
-            types.append("revolute")
-        elif math.isnan(d) and (not math.isnan(th)):
-            types.append("prismatic")
-        else:
-            types.append("fixed")
-    return types
+ALGOS  = ["PSO", "QPSO", "SVD", "HYBRID"]
+EXPS   = ["e2", "e3"]
+ROBOTS = ["antro", "Standford", "DLR"]
+MODES  = ["easy", "hard"]
 
-def stats(a):
-    if a.size == 0:
-        return {"count":0}
+REQUIRED_COLS = {"converged", "pos_err", "ori_err", "n_iters", "time_s", "mu", "kappa"}
+
+
+def read_log(path):
+    """Lee un CSV de log y devuelve una lista de dicts con valores casteados.
+    Devuelve None si el archivo no existe, esta vacio, le faltan columnas
+    requeridas o algun valor no se puede convertir a numero."""
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, newline="") as f:
+            reader = csv.DictReader(f)
+            fieldnames = reader.fieldnames or []
+            if not REQUIRED_COLS.issubset(set(fieldnames)):
+                return None
+            rows = list(reader)
+        if not rows:
+            return None
+        parsed = []
+        for r in rows:
+            parsed.append({
+                "converged": int(float(r["converged"])),
+                "pos_err":   float(r["pos_err"]),
+                "ori_err":   float(r["ori_err"]),
+                "n_iters":   int(float(r["n_iters"])),
+                "time_s":    float(r["time_s"]),
+                "mu":        float(r["mu"]),
+                "kappa":     float(r["kappa"]),
+            })
+        return parsed
+    except (ValueError, KeyError, csv.Error, OSError):
+        return None
+
+
+def mean_std(values):
+    if not values:
+        return None, None
+    m = statistics.fmean(values)
+    s = statistics.pstdev(values) if len(values) > 1 else 0.0
+    return m, s
+
+
+def summarize(rows):
+    n = len(rows)
+    conv_rows = [r for r in rows if r["converged"] == 1]
+    fail_rows = [r for r in rows if r["converged"] == 0]
+    nconv = len(conv_rows)
+
+    iters_m, iters_s = mean_std([r["n_iters"] for r in conv_rows])
+    time_m, _        = mean_std([r["time_s"]  for r in conv_rows])
+    mu_m, _          = mean_std([r["mu"]      for r in conv_rows])
+    kappa_m, _       = mean_std([r["kappa"]   for r in conv_rows])
+    pos_fail_m, _    = mean_std([r["pos_err"] for r in fail_rows])
+    ori_fail_m, _    = mean_std([r["ori_err"] for r in fail_rows])
+
     return {
-        "count": a.size,
-        "mean": float(np.mean(a)),
-        "median": float(np.median(a)),
-        "std": float(np.std(a, ddof=0)),
-        "min": float(np.min(a)),
-        "max": float(np.max(a)),
-        "p25": float(np.percentile(a,25)),
-        "p75": float(np.percentile(a,75))
+        "n": n, "nconv": nconv,
+        "conv_rate": 100.0 * nconv / n if n else 0.0,
+        "iters_m": iters_m, "iters_s": iters_s,
+        "time_m": time_m, "mu_m": mu_m, "kappa_m": kappa_m,
+        "pos_fail_m": pos_fail_m, "ori_fail_m": ori_fail_m,
     }
 
-def fmt_stats(s):
-    if s.get("count",0) == 0:
-        return "  (no datos)\n"
-    return ("  count: {count}, mean: {mean:.6g}, median: {median:.6g}, std: {std:.6g},\n"
-            "  min: {min:.6g}, max: {max:.6g}, p25: {p25:.6g}, p75: {p75:.6g}\n").format(**s)
 
-for robot in robots:
-    print(f"Robot {robot}")
-    DH = load_DH_try(robot)
-    joint_types = None
-    if DH is not None:
-        joint_types = infer_joint_types_from_DH(DH)
-        print("  Joints detected:", joint_types)
-    else:
-        print("  DH file not found; joint types will be inferred from log dq columns only.")
-    for mode in modes:
-        path = os.path.join(LOG_DIR, f"log_{robot}_{mode}.csv")
-        print(f"Modo: {mode}")
-        if not os.path.exists(path):
-            print("  Log file missing:", path)
+def fmt(v, d=3):
+    return "NA" if v is None else f"{v:.{d}f}"
+
+
+def main():
+    skipped = []
+    summary_rows = []
+
+    for algo in ALGOS:
+        algo_path = os.path.join(BASE_DIR, algo)
+        if not os.path.isdir(algo_path):
+            skipped.append(f"{algo}: carpeta no encontrada")
             continue
-        header, data = load_csv_with_header(path)
-        if data.size == 0:
-            print("  Log vacío")
-            continue
-        # if single row, ensure 2D
-        if data.ndim == 1:
-            data = data.reshape(1, -1)
-        col_index = {name: i for i, name in enumerate(header)}
-        # required columns
-        conv = data[:, col_index["converged"]].astype(int)
-        pos_err = data[:, col_index["pos_err"]]
-        ori_err = data[:, col_index["ori_err"]]
-        n_iters = data[:, col_index["n_iters"]].astype(int)
-        times = data[:, col_index["time_s"]]
-        mu = data[:, col_index["mu"]]
-        kapp = data[:, col_index["kappa"]]
-        # dq columns: detect names starting with dq_
-        dq_cols = [ (i, name) for i,name in enumerate(header) if name.startswith("dq_") ]
-        dq_cols.sort()
-        dq_idx = [i for i,_ in dq_cols]
-        dq_names = [name for _,name in dq_cols]
-        dq = data[:, dq_idx] if dq_idx else np.zeros((data.shape[0],0))
-        n_poses = data.shape[0]
-        n_dofs = dq.shape[1]
-        print(f"  filas (poses): {n_poses}, dofs (dq cols): {n_dofs}")
-        # basic convergence
-        n_conv = int((conv == 1).sum())
-        n_fail = n_poses - n_conv
-        conv_rate = n_conv / n_poses
-        print(f"  convergidos: {n_conv} / {n_poses}  (tasa {conv_rate:.4f})")
-        # overall stats
-        print("  pos_err stats:")
-        print(fmt_stats(stats(pos_err)))
-        print("  ori_err stats:")
-        print(fmt_stats(stats(ori_err)))
-        print("  n_iters stats:")
-        print(fmt_stats(stats(n_iters)))
-        print("  time_s stats:")
-        print(fmt_stats(stats(times)))
-        print("  mu stats:")
-        print(fmt_stats(stats(mu)))
-        print("  kappa stats:")
-        print(fmt_stats(stats(kapp)))
-        # worst poses
-        worst_pos_idx = np.argsort(-pos_err)[:10]
-        worst_ori_idx = np.argsort(-ori_err)[:10]
-        print("  top worst pos_err (idx, conv, pos_err, ori_err, n_iters, time_s):")
-        for idx in worst_pos_idx:
-            print(f"    {int(idx)} {int(conv[idx])} {pos_err[idx]:.6g} {ori_err[idx]:.6g} {int(n_iters[idx])} {times[idx]:.6g}")
-        print("  top worst ori_err (idx, conv, pos_err, ori_err, n_iters, time_s):")
-        for idx in worst_ori_idx:
-            print(f"    {int(idx)} {int(conv[idx])} {pos_err[idx]:.6g} {ori_err[idx]:.6g} {int(n_iters[idx])} {times[idx]:.6g}")
-        # check dq-derived constraints
-        if n_dofs == 0:
-            print("  no hay columnas dq_*, no se pueden verificar límites por articulación")
-        else:
-            print("  Verificaciones por DOF (dq_i):")
-            # determine joint types if not available: assume order from DH if present, else try heuristics
-            types = joint_types if (joint_types is not None and len(joint_types) == n_dofs) else None
-            if types is None:
-                # heuristic: if dq value is always <= 1 -> prismatic candidate else revolute candidate
-                types = []
-                for j in range(n_dofs):
-                    col = dq[:, j]
-                    if np.all(col <= 1.0 + 1e-8):
-                        types.append("prismatic?")
-                    else:
-                        types.append("revolute?")
-                print("    joint types inferred heuristically:", types)
-            else:
-                print("    joint types from DH:", types)
-            violations = {j: [] for j in range(n_dofs)}
-            count_viol = {j: 0 for j in range(n_dofs)}
-            mean_dq_conv = []
-            mean_dq_fail = []
-            for j in range(n_dofs):
-                col = dq[:, j]
-                jt = types[j]
-                if jt.startswith("prismatic"):
-                    # dq is abs(qf - q0); q0 was zero in original runs => qf magnitude should be in [0,1]
-                    viol_mask = (col < -EPS) | (col > 1.0 + 1e-9)
-                    count_viol[j] = int(viol_mask.sum())
-                    violations[j] = list(np.nonzero(viol_mask)[0][:10])
-                elif jt.startswith("revolute"):
-                    # dq is abs(wrap(qf - q0)), should be <= pi
-                    viol_mask = (col < -EPS) | (col > math.pi + 1e-9)
-                    count_viol[j] = int(viol_mask.sum())
-                    violations[j] = list(np.nonzero(viol_mask)[0][:10])
-                elif jt == "fixed":
-                    viol_mask = (col > 1e-9)
-                    count_viol[j] = int(viol_mask.sum())
-                    violations[j] = list(np.nonzero(viol_mask)[0][:10])
-                else:
-                    viol_mask = np.zeros(col.shape, dtype=bool)
-                # mean dq for converged/fail
-                mean_dq_conv.append(float(np.mean(col[conv==1])) if np.any(conv==1) else float('nan'))
-                mean_dq_fail.append(float(np.mean(col[conv==0])) if np.any(conv==0) else float('nan'))
-            # print summary per joint
-            for j in range(n_dofs):
-                jt = types[j]
-                print(f"    DOF {j+1} ({dq_names[j]}): type {jt}, violations {count_viol[j]} (sample idxs {violations[j]})")
-            # aggregate violation info
-            total_viol = sum(count_viol.values())
-            print(f"  total violations across DOFs: {total_viol}")
-            # mean dq per joint converged vs failed
-            print("  mean dq per DOF (converged / failed):")
-            for j in range(n_dofs):
-                cv = mean_dq_conv[j]
-                fv = mean_dq_fail[j]
-                print(f"    DOF {j+1}: {cv:.6g} / {fv:.6g}")
-        # additional aggregated checks
-        # distribution of iterations for converged vs failed
-        if n_poses > 0:
-            iters_conv = n_iters[conv==1]
-            iters_fail = n_iters[conv==0]
-            print("  n_iters (converged):", fmt_stats(stats(iters_conv)))
-            print("  n_iters (failed):", fmt_stats(stats(iters_fail)))
-            time_conv = times[conv==1]
-            time_fail = times[conv==0]
-            print("  time_s (converged):", fmt_stats(stats(time_conv)))
-            print("  time_s (failed):", fmt_stats(stats(time_fail)))
-        # quick check: any NaNs in key columns
-        nan_counts = {}
-        for name in ["converged","pos_err_m","ori_err_rad","n_iters","time_s","mu","kappa"]:
-            idx = col_index[name] if (name in col_index) else None
-            if idx is not None:
-                nan_counts[name] = int(np.isnan(data[:, idx]).sum())
-        print("  NaN counts in key columns:", nan_counts)
-        print("-" * 60)
+
+        algo_has_data = False
+
+        for exp in EXPS:
+            exp_path = os.path.join(algo_path, exp)
+            if not os.path.isdir(exp_path):
+                skipped.append(f"{algo}/{exp}: carpeta no encontrada")
+                continue
+
+            lines = []
+            n_total = 0
+            nconv_total = 0
+
+            for robot in ROBOTS:
+                for mode in MODES:
+                    fname = f"log_{robot}_{mode}.csv"
+                    fpath = os.path.join(exp_path, fname)
+                    rows = read_log(fpath)
+                    if rows is None:
+                        skipped.append(f"{algo}/{exp}/{fname}: vacio, inexistente o invalido")
+                        continue
+
+                    s = summarize(rows)
+                    n_total += s["n"]
+                    nconv_total += s["nconv"]
+                    algo_has_data = True
+
+                    line = (f"  {robot:<10}{mode:<6} N={s['n']:>3} "
+                            f"conv={s['conv_rate']:>5.1f}% "
+                            f"iters_conv={fmt(s['iters_m'],1):>7}+-{fmt(s['iters_s'],1):<7} "
+                            f"t_conv={fmt(s['time_m'],4):>8}s "
+                            f"mu_conv={fmt(s['mu_m'],4):>8} "
+                            f"kappa_conv={fmt(s['kappa_m'],4):>7}")
+                    if s["nconv"] < s["n"]:
+                        line += (f"  | no_conv: pos_err={fmt(s['pos_fail_m'],4)} "
+                                 f"ori_err={fmt(s['ori_fail_m'],4)}")
+                    lines.append(line)
+
+            if lines:
+                print(f"\n[{algo}/{exp}]")
+                for l in lines:
+                    print(l)
+                overall = 100.0 * nconv_total / n_total if n_total else 0.0
+                print(f"  TOTAL {algo}/{exp}: N={n_total} conv={overall:.1f}%")
+                summary_rows.append((algo, exp, n_total, nconv_total, overall))
+
+        if not algo_has_data:
+            skipped.append(f"{algo}: sin datos validos en ningun experimento")
+
+    print("\nRESUMEN GLOBAL")
+    for algo, exp, n, nc, rate in summary_rows:
+        print(f"  {algo:<8}{exp:<4} N={n:>3} conv={rate:>5.1f}%")
+
+    if skipped:
+        print("\nOMITIDOS")
+        for s in skipped:
+            print(f"  - {s}")
+
+
+if __name__ == "__main__":
+    main()
