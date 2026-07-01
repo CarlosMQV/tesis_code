@@ -1,28 +1,26 @@
 import numpy as np, math, csv, os, time
 from numba import njit
-
+from collections import deque
+ 
 TOL_POS = 1e-3
 TOL_ORI = 1e-2
 MAX_IT = 1000
 n_particles = 50
-
+ 
 STALL_WINDOW = 25
-STALL_EPS = 1e-6
-
+STALL_EPS = 1e-4
+STALL_WINDOW_QPSO = 50
+STALL_EPS_QPSO = 1e-4
+ 
 robots = ["antro", "Standford", "DLR"]
 modes = ["easy", "hard"]
-
+ 
 HYBRID_PARAMS = {
     "antro":    {"lam": 0.194, "beta0": 0.25, "beta1": 1.0},
     "Standford":{"lam": 0.601, "beta0": 0.05, "beta1": 0.65},
     "DLR":      {"lam": 0.092, "beta0": 0.00, "beta1": 0.50},
 }
-
-# ==================================================================
-# Funciones sin cambios respecto a tus scripts anteriores.
-# Copiar el cuerpo exacto (no las reescribas, solo pega tu version).
-# ==================================================================
-
+ 
 def load_csv(path):
     d = np.genfromtxt(path, delimiter=',', dtype=float)
     return np.atleast_2d(d)
@@ -265,14 +263,16 @@ def cost(DH, Q, TARGET):
 def hybrid_solve(DH, TARGET, lam, beta0, beta1, q0=None,
                   particles=n_particles, max_it=MAX_IT,
                   tol_pos=TOL_POS, tol_ori=TOL_ORI,
-                  stall_window=STALL_WINDOW, stall_eps=STALL_EPS):
+                  stall_window=STALL_WINDOW, stall_eps=STALL_EPS,
+                  stall_window_qpso=STALL_WINDOW_QPSO, stall_eps_qpso=STALL_EPS_QPSO):
     n = DH.shape[0]
     q = np.zeros(n) if q0 is None else np.asarray(q0, dtype=float).flatten()
     limits = np.asarray(infer_limits(DH))
     t0 = time.perf_counter()
-
-    # ---- Fase 1: SVD/DLS con deteccion de estancamiento ----
-    cost_hist = np.full(stall_window, np.inf)
+ 
+    # ---- Fase 1: SVD/DLS ----
+    best_hist = deque(maxlen=stall_window)
+    best_cost = math.inf
     pos_norm = ori_norm = None
     k = 0
     while k <= max_it:
@@ -285,53 +285,56 @@ def hybrid_solve(DH, TARGET, lam, beta0, beta1, q0=None,
         else: e_ori = (2.0 * np.arctan2(vnorm, float(q_err[0])) / vnorm) * v
         e_pos = np.asarray(e_pos).reshape(3,)
         pos_norm = float(np.linalg.norm(e_pos)); ori_norm = float(vnorm)
-
+ 
         if pos_norm <= tol_pos and ori_norm <= tol_ori:
             elapsed = time.perf_counter() - t0
             return q, 1, pos_norm, ori_norm, k, elapsed, "SVD"
-
+ 
+        total = math.sqrt(pos_norm**2 + ori_norm**2)
+        if total < best_cost: best_cost = total
+        best_hist.append(best_cost)
+ 
         if k == max_it:
             break
-
-        total = pos_norm + ori_norm
-        cost_hist[k % stall_window] = total
-        if k >= stall_window and (cost_hist.max() - cost_hist.min()) < stall_eps:
-            break  # estancado: se corta y el presupuesto restante pasa a QPSO
-
+        if len(best_hist) == stall_window and (best_hist[0] - best_hist[-1]) < stall_eps:
+            break  # estancado: pasa a fase 2 (QPSO)
+ 
         dx = np.vstack((e_pos.reshape(3,1), e_ori.reshape(3,1)))
         J = JAC(DH, q)
         dq = dls(J, dx, lam)
         q = clamp(q + dq, limits)
         k += 1
-
+ 
     iters_svd = k
-    q_svd = q.copy()
-    pos_svd, ori_svd = pos_norm, ori_norm
-    cost_svd = math.sqrt(pos_svd**2 + ori_svd**2)
-
-    # ---- Fase 2: QPSO con el presupuesto de iteraciones restante ----
+    q1 = q.copy(); pos1, ori1 = pos_norm, ori_norm
+ 
     remaining = max_it - iters_svd
     if remaining <= 0:
         elapsed = time.perf_counter() - t0
-        return q_svd, 0, pos_svd, ori_svd, iters_svd, elapsed, "SVD"
-
+        return q1, 0, pos1, ori1, iters_svd, elapsed, "SVD"
+ 
+    # ---- Fase 2: QPSO (particula inicial = ultima posicion de SVD) ----
     rng = np.random.default_rng()
     lo = limits[:,0]; hi = limits[:,1]
     m = particles
     pos_p = rng.uniform(lo, hi, size=(m, n))
-    pos_p[0, :] = q_svd  # una particula parte de la ultima solucion de SVD
+    pos_p[0, :] = q1
     scores, scores_pos, scores_ori = cost(DH, pos_p, TARGET)
     pbest = pos_p.copy()
     pbest_cost = scores
     pbest_pos_err = scores_pos.copy()
     pbest_ori_err = scores_ori.copy()
-
+ 
     idx_min = int(np.argmin(pbest_cost))
     gbest = pbest[idx_min].copy()
     gbest_cost = float(pbest_cost[idx_min])
     gbest_pos_err = float(pbest_pos_err[idx_min])
     gbest_ori_err = float(pbest_ori_err[idx_min])
-
+ 
+    best_hist_q = deque(maxlen=stall_window_qpso)
+    best_hist_q.append(gbest_cost)
+    iters_qpso = 0
+ 
     for it in range(remaining):
         t = it + 1
         beta = (beta1 - beta0) * (remaining - t) / remaining + beta0
@@ -342,18 +345,23 @@ def hybrid_solve(DH, TARGET, lam, beta0, beta1, q0=None,
             pbest_pos_err[improve_mask] = cur_pos_err[improve_mask]
             pbest_ori_err[improve_mask] = cur_ori_err[improve_mask]
             pbest[improve_mask, :] = pos_p[improve_mask, :]
-
+ 
         idx = int(np.argmin(pbest_cost))
         if pbest_cost[idx] < gbest_cost:
             gbest_cost = float(pbest_cost[idx])
             gbest_pos_err = float(pbest_pos_err[idx])
             gbest_ori_err = float(pbest_ori_err[idx])
             gbest = pbest[idx].copy()
-
+ 
         if gbest_pos_err <= tol_pos and gbest_ori_err <= tol_ori:
             elapsed = time.perf_counter() - t0
             return gbest, 1, gbest_pos_err, gbest_ori_err, iters_svd + it + 1, elapsed, "QPSO"
-
+ 
+        best_hist_q.append(gbest_cost)
+        iters_qpso = it + 1
+        if len(best_hist_q) == stall_window_qpso and (best_hist_q[0] - best_hist_q[-1]) < stall_eps_qpso:
+            break  # estancado: pasa a fase 3 (SVD con arranque en caliente)
+ 
         mbest = np.mean(pbest, axis=0)
         phi = rng.random((m, n))
         u = rng.random((m, n)) * (1 - 1e-12) + 1e-12
@@ -363,11 +371,54 @@ def hybrid_solve(DH, TARGET, lam, beta0, beta1, q0=None,
         term = beta * np.abs(mbest[np.newaxis, :] - pos_p) * (- np.log(u))
         pos_p = g_id + np.where(signs, term, -term)
         pos_p = clamp(pos_p, limits)
-
+ 
+    remaining2 = max_it - iters_svd - iters_qpso
+    if remaining2 <= 0:
+        elapsed = time.perf_counter() - t0
+        return gbest, 0, gbest_pos_err, gbest_ori_err, iters_svd + iters_qpso, elapsed, "QPSO"
+ 
+    # ---- Fase 3: SVD/DLS con arranque en caliente desde gbest de QPSO ----
+    q = gbest.copy()
+    best_hist2 = deque(maxlen=stall_window)
+    best_cost2 = math.inf
+    pos_norm = ori_norm = None
+    k2 = 0
+    while k2 <= remaining2:
+        Tcur = FK(DH, q)
+        e_pos = ep(Tcur[:3,3], TARGET[:3,3])
+        q_err = eo(Tcur[:3,:3], TARGET[:3,:3])
+        q_err = np.asarray(q_err, dtype=float).flatten()
+        v = q_err[1:4]; vnorm = np.linalg.norm(v)
+        if vnorm < 1e-12: e_ori = np.zeros(3)
+        else: e_ori = (2.0 * np.arctan2(vnorm, float(q_err[0])) / vnorm) * v
+        e_pos = np.asarray(e_pos).reshape(3,)
+        pos_norm = float(np.linalg.norm(e_pos)); ori_norm = float(vnorm)
+ 
+        if pos_norm <= tol_pos and ori_norm <= tol_ori:
+            elapsed = time.perf_counter() - t0
+            return q, 1, pos_norm, ori_norm, iters_svd + iters_qpso + k2, elapsed, "SVD2"
+ 
+        total = math.sqrt(pos_norm**2 + ori_norm**2)
+        if total < best_cost2: best_cost2 = total
+        best_hist2.append(best_cost2)
+ 
+        if k2 == remaining2:
+            break
+        if len(best_hist2) == stall_window and (best_hist2[0] - best_hist2[-1]) < stall_eps:
+            break
+ 
+        dx = np.vstack((e_pos.reshape(3,1), e_ori.reshape(3,1)))
+        J = JAC(DH, q)
+        dq = dls(J, dx, lam)
+        q = clamp(q + dq, limits)
+        k2 += 1
+ 
     elapsed = time.perf_counter() - t0
-    if gbest_cost < cost_svd:
-        return gbest, 0, gbest_pos_err, gbest_ori_err, iters_svd + remaining, elapsed, "QPSO"
-    return q_svd, 0, pos_svd, ori_svd, iters_svd, elapsed, "SVD"
+    iters_total = iters_svd + iters_qpso + k2
+    cost3 = math.sqrt(pos_norm**2 + ori_norm**2)
+    if cost3 < gbest_cost:
+        return q, 0, pos_norm, ori_norm, iters_total, elapsed, "SVD2"
+    return gbest, 0, gbest_pos_err, gbest_ori_err, iters_svd + iters_qpso, elapsed, "QPSO"
 
 # ==================================================================
 def main():
@@ -391,6 +442,6 @@ def main():
                 log_row(LOGfile, conv, pos, ori, its, elapsed, mu, kappa, dvs, method)
                 print(f"Pose {i}/{len(Tlist)}: conv={conv} n_iter={its} method={method}")
             print(f"{robot} {mode} -> {LOGfile}")
-
+ 
 if __name__ == "__main__":
     main()
