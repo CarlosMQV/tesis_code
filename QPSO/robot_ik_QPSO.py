@@ -249,9 +249,13 @@ def qpso_solve(DH, TARGET, beta0, beta1, particles=n_particles,
     scores, scores_pos, scores_ori = cost(DH, pos, TARGET)
     pbest = pos.copy()
     pbest_cost = scores
+    pbest_pos_err = scores_pos.copy()
+    pbest_ori_err = scores_ori.copy()
     idx_min = int(np.argmin(pbest_cost))
     gbest = pbest[idx_min].copy()
     gbest_cost = float(pbest_cost[idx_min])
+    gbest_pos_err = float(pbest_pos_err[idx_min])
+    gbest_ori_err = float(pbest_ori_err[idx_min])
     for it in range(max_it):
         t = it + 1
         beta = (beta1 - beta0) * (max_it - t) / max_it + beta0
@@ -259,16 +263,18 @@ def qpso_solve(DH, TARGET, beta0, beta1, particles=n_particles,
         improve_mask = cur_costs < pbest_cost
         if np.any(improve_mask):
             pbest_cost[improve_mask] = cur_costs[improve_mask]
+            pbest_pos_err[improve_mask] = cur_pos_err[improve_mask]
+            pbest_ori_err[improve_mask] = cur_ori_err[improve_mask]
             pbest[improve_mask, :] = pos[improve_mask, :]
         idx = int(np.argmin(pbest_cost))
         if pbest_cost[idx] < gbest_cost:
             gbest_cost = float(pbest_cost[idx])
+            gbest_pos_err = float(pbest_pos_err[idx])
+            gbest_ori_err = float(pbest_ori_err[idx])
             gbest = pbest[idx].copy()
-        g_cost, g_pos, g_ori = cost(DH, gbest[np.newaxis, :], TARGET)
-        pos_norm = float(g_pos[0]); ori_norm = float(g_ori[0])
-        if (pos_norm <= tol_pos) and (ori_norm <= tol_ori):
+        if (gbest_pos_err <= tol_pos) and (gbest_ori_err <= tol_ori):
             elapsed = time.perf_counter() - t0
-            return gbest, 1, pos_norm, ori_norm, it+1, elapsed
+            return gbest, 1, gbest_pos_err, gbest_ori_err, it+1, elapsed
         mbest = np.mean(pbest, axis=0)
         phi = rng.random((m, n)); u = rng.random((m, n))
         signs = rng.random((m, n)) > 0.5
@@ -277,9 +283,8 @@ def qpso_solve(DH, TARGET, beta0, beta1, particles=n_particles,
         term = beta * np.abs(mbest[np.newaxis, :] - pos) * (- np.log(u))
         pos = g_id + np.where(signs, term, -term)
         pos = clamp(pos, limits)
-    g_cost, g_pos, g_ori = cost(DH, gbest[np.newaxis, :], TARGET)
     elapsed = time.perf_counter() - t0
-    return gbest, 0, float(g_pos[0]), float(g_ori[0]), max_it, elapsed
+    return gbest, 0, gbest_pos_err, gbest_ori_err, max_it, elapsed
 
 def main():
     for robot in robots:
