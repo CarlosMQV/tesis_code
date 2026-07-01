@@ -7,6 +7,9 @@ Estructura esperada (este script debe estar al mismo nivel):
 
 Carpetas o archivos vacios, inexistentes o con columnas/valores invalidos
 se omiten sin detener la ejecucion, y se listan al final en OMITIDOS.
+
+Si el CSV incluye la columna 'method' (caso HYBRID), se agrega un desglose
+de convergencia por metodo (SVD, QPSO, SVD2) en cada linea.
 """
 
 import os
@@ -24,9 +27,6 @@ REQUIRED_COLS = {"converged", "pos_err", "ori_err", "n_iters", "time_s", "mu", "
 
 
 def read_log(path):
-    """Lee un CSV de log y devuelve una lista de dicts con valores casteados.
-    Devuelve None si el archivo no existe, esta vacio, le faltan columnas
-    requeridas o algun valor no se puede convertir a numero."""
     if not os.path.isfile(path):
         return None
     try:
@@ -38,6 +38,7 @@ def read_log(path):
             rows = list(reader)
         if not rows:
             return None
+        has_method = "method" in fieldnames
         parsed = []
         for r in rows:
             parsed.append({
@@ -48,6 +49,7 @@ def read_log(path):
                 "time_s":    float(r["time_s"]),
                 "mu":        float(r["mu"]),
                 "kappa":     float(r["kappa"]),
+                "method":    r["method"] if has_method else None,
             })
         return parsed
     except (ValueError, KeyError, csv.Error, OSError):
@@ -75,12 +77,27 @@ def summarize(rows):
     pos_fail_m, _    = mean_std([r["pos_err"] for r in fail_rows])
     ori_fail_m, _    = mean_std([r["ori_err"] for r in fail_rows])
 
+    methods = {}
+    if rows and rows[0]["method"] is not None:
+        for meth in sorted(set(r["method"] for r in rows)):
+            m_rows = [r for r in rows if r["method"] == meth]
+            m_conv = [r for r in m_rows if r["converged"] == 1]
+            m_iters, _ = mean_std([r["n_iters"] for r in m_conv])
+            methods[meth] = {
+                "n": len(m_rows),
+                "nconv": len(m_conv),
+                "nfail": len(m_rows) - len(m_conv),
+                "rate": 100.0 * len(m_conv) / len(m_rows) if m_rows else 0.0,
+                "iters_m": m_iters,
+            }
+
     return {
         "n": n, "nconv": nconv,
         "conv_rate": 100.0 * nconv / n if n else 0.0,
         "iters_m": iters_m, "iters_s": iters_s,
         "time_m": time_m, "mu_m": mu_m, "kappa_m": kappa_m,
         "pos_fail_m": pos_fail_m, "ori_fail_m": ori_fail_m,
+        "methods": methods,
     }
 
 
@@ -133,6 +150,11 @@ def main():
                     if s["nconv"] < s["n"]:
                         line += (f"  | no_conv: pos_err={fmt(s['pos_fail_m'],4)} "
                                  f"ori_err={fmt(s['ori_fail_m'],4)}")
+                    if s["methods"]:
+                        parts = [f"{meth}: n={d['n']} conv={d['nconv']} fail={d['nfail']} "
+                                 f"rate={d['rate']:.1f}% iters={fmt(d['iters_m'],1)}"
+                                 for meth, d in s["methods"].items()]
+                        line += "  | metodo: " + "; ".join(parts)
                     lines.append(line)
 
             if lines:
