@@ -9,7 +9,7 @@ n_particles = 50
  
 STALL_WINDOW = 25
 STALL_EPS = 1e-4
-STALL_WINDOW_QPSO = 50
+STALL_WINDOW_QPSO = 75
 STALL_EPS_QPSO = 1e-4
  
 robots = ["antro", "Standford", "DLR"]
@@ -418,7 +418,7 @@ def hybrid_solve(DH, TARGET, lam, beta0, beta1, q0=None,
     cost3 = math.sqrt(pos_norm**2 + ori_norm**2)
     if cost3 < gbest_cost:
         return q, 0, pos_norm, ori_norm, iters_total, elapsed, "SVD2"
-    return gbest, 0, gbest_pos_err, gbest_ori_err, iters_svd + iters_qpso, elapsed, "QPSO"
+    return gbest, 0, gbest_pos_err, gbest_ori_err, iters_total, elapsed, "QPSO2"
 
 # ==================================================================
 def main():
