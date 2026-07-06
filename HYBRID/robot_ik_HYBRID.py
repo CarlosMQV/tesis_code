@@ -9,7 +9,7 @@ n_particles = 50
  
 STALL_WINDOW = 25
 STALL_EPS = 1e-4
-STALL_WINDOW_QPSO = 75
+STALL_WINDOW_QPSO = 15
 STALL_EPS_QPSO = 1e-4
  
 robots = ["antro", "Standford", "DLR"]
