@@ -22,7 +22,7 @@ MAX_IT        = 1000
 n_particles   = 50
 STALL_WINDOW      = 25
 STALL_EPS         = 1e-4
-STALL_WINDOW_QPSO = 15
+STALL_WINDOW_QPSO = 25
 STALL_EPS_QPSO    = 1e-4
 
 ROBOTS = ["antro", "Standford", "DLR"]
