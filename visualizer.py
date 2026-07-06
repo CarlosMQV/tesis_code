@@ -22,7 +22,7 @@ MAX_IT        = 1000
 n_particles   = 50
 STALL_WINDOW      = 25
 STALL_EPS         = 1e-4
-STALL_WINDOW_QPSO = 75
+STALL_WINDOW_QPSO = 10
 STALL_EPS_QPSO    = 1e-4
 
 ROBOTS = ["antro", "Standford", "DLR"]
@@ -226,12 +226,27 @@ def clamp(pos, limits):
 #  GEOMETRÍA DEL ROBOT (puntos articulares)
 # ═══════════════════════════════════════════════════════════════
 def get_robot_points(DH, q):
+    """
+    Extrae puntos para visualizar el robot.
+    Para articulaciones prismáticas, añade puntos intermedios
+    que muestran la extensión del vástago.
+    """
     pts = [np.array([0.0, 0.0, 0.0])]
     T = np.eye(4, dtype=np.float64)
     for i in range(DH.shape[0]):
         th, d, a, al = DH[i,0], DH[i,1], DH[i,2], DH[i,3]
-        if np.isnan(th) and (not np.isnan(d)):   th = q[i]
-        elif np.isnan(d) and (not np.isnan(th)): d = q[i]
+        is_prismatic = np.isnan(d) and (not np.isnan(th))
+        
+        if np.isnan(th) and (not np.isnan(d)):
+            th = q[i]
+        elif is_prismatic:
+            d = q[i]
+        
+        # Para prismática: punto antes de la traslación (muestra el vástago)
+        if is_prismatic:
+            T_before_trans = T @ A(th, 0.0, a, al)  # Solo rotación, sin d
+            pts.append(T_before_trans[:3, 3].copy())
+        
         T = T @ A(th, d, a, al)
         pts.append(T[:3, 3].copy())
     return pts
@@ -520,9 +535,11 @@ class RobotAnimator:
         self.sl_iter.set_val(0)
         self._slider_busy = False
 
-        # Robot gris translúcido si converge
+        # Limpiar robot gris anterior
         for a in self.target_artists: a.remove()
         self.target_artists.clear()
+        
+        # Robot gris translúcido si converge
         if self.trace['converged']:
             pts = get_robot_points(self.DH, self.trace['qs'][-1])
             for i in range(len(pts)-1):
@@ -530,17 +547,63 @@ class RobotAnimator:
                                    [pts[i][1], pts[i+1][1]],
                                    [pts[i][2], pts[i+1][2]],
                                    color=TARGET_COLOR, linewidth=2,
-                                   alpha=0.30, linestyle='--')
+                                   alpha=0.35, linestyle='--')
                 self.target_artists.append(ln)
             for pt in pts:
                 dt, = self.ax.plot([pt[0]], [pt[1]], [pt[2]], 'o',
-                                   color=TARGET_COLOR, markersize=4, alpha=0.30)
+                                   color=TARGET_COLOR, markersize=4, alpha=0.35)
                 self.target_artists.append(dt)
+            
+            # Ajustar límites del axis si el robot gris está fuera del rango
+            self._adjust_axis_limits(pts)
 
         self.btn_calc.label.set_text('Calcular')
         self.btn_play.set_active(True)
         self.btn_exp.set_active(True)
         self._update(0)
+
+    def _adjust_axis_limits(self, new_pts):
+        """Ajusta dinámicamente los límites del axis si hay puntos fuera del rango."""
+        # Obtener límites actuales
+        xlim = self.ax.get_xlim()
+        ylim = self.ax.get_ylim()
+        zlim = self.ax.get_zlim()
+        
+        # Calcular bounding box de los nuevos puntos
+        pts_arr = np.array(new_pts)
+        min_coords = pts_arr.min(axis=0)
+        max_coords = pts_arr.max(axis=0)
+        
+        # Expandir límites si es necesario (con margen del 10%)
+        margin = 0.1
+        need_update = False
+        
+        new_xlim = list(xlim)
+        new_ylim = list(ylim)
+        new_zlim = list(zlim)
+        
+        for i, (lim, mn, mx) in enumerate(zip([new_xlim, new_ylim, new_zlim], 
+                                               min_coords, max_coords)):
+            if mn < lim[0]:
+                lim[0] = mn - margin * abs(mn)
+                need_update = True
+            if mx > lim[1]:
+                lim[1] = mx + margin * abs(mx)
+                need_update = True
+        
+        if need_update:
+            # Mantener aspect ratio cúbico
+            max_range = max(new_xlim[1] - new_xlim[0],
+                           new_ylim[1] - new_ylim[0],
+                           new_zlim[1] - new_zlim[0]) / 2.0
+            mid_x = sum(new_xlim) / 2.0
+            mid_y = sum(new_ylim) / 2.0
+            mid_z = sum(new_zlim) / 2.0
+            
+            self.ax.set_xlim(mid_x - max_range, mid_x + max_range)
+            self.ax.set_ylim(mid_y - max_range, mid_y + max_range)
+            self.ax.set_zlim(mid_z - max_range, mid_z + max_range)
+            self.fig.canvas.draw_idle()
 
     def _on_play(self, _):
         if self.trace is None: return
