@@ -256,10 +256,6 @@ def cost(DH, Q, TARGET):
         eos_arr[i] = math.sqrt(eo0*eo0 + eo1*eo1 + eo2*eo2)
     return totals, eps_arr, eos_arr
 
-# ==================================================================
-# Nueva: hybrid_solve
-# ==================================================================
-
 def hybrid_solve(DH, TARGET, lam, beta0, beta1, q0=None,
                   particles=n_particles, max_it=MAX_IT,
                   tol_pos=TOL_POS, tol_ori=TOL_ORI,
@@ -378,9 +374,9 @@ def hybrid_solve(DH, TARGET, lam, beta0, beta1, q0=None,
         return gbest, 0, gbest_pos_err, gbest_ori_err, iters_svd + iters_qpso, elapsed, "QPSO"
  
     # ---- Fase 3: SVD/DLS con arranque en caliente desde gbest de QPSO ----
+    # Fase final: sin criterio de estancamiento, corre ciegamente hasta
+    # converger o agotar remaining2, igual que svd_solve original.
     q = gbest.copy()
-    best_hist2 = deque(maxlen=stall_window)
-    best_cost2 = math.inf
     pos_norm = ori_norm = None
     k2 = 0
     while k2 <= remaining2:
@@ -398,13 +394,7 @@ def hybrid_solve(DH, TARGET, lam, beta0, beta1, q0=None,
             elapsed = time.perf_counter() - t0
             return q, 1, pos_norm, ori_norm, iters_svd + iters_qpso + k2, elapsed, "SVD2"
  
-        total = math.sqrt(pos_norm**2 + ori_norm**2)
-        if total < best_cost2: best_cost2 = total
-        best_hist2.append(best_cost2)
- 
         if k2 == remaining2:
-            break
-        if len(best_hist2) == stall_window and (best_hist2[0] - best_hist2[-1]) < stall_eps:
             break
  
         dx = np.vstack((e_pos.reshape(3,1), e_ori.reshape(3,1)))
@@ -414,13 +404,8 @@ def hybrid_solve(DH, TARGET, lam, beta0, beta1, q0=None,
         k2 += 1
  
     elapsed = time.perf_counter() - t0
-    iters_total = iters_svd + iters_qpso + k2
-    cost3 = math.sqrt(pos_norm**2 + ori_norm**2)
-    if cost3 < gbest_cost:
-        return q, 0, pos_norm, ori_norm, iters_total, elapsed, "SVD2"
-    return gbest, 0, gbest_pos_err, gbest_ori_err, iters_total, elapsed, "QPSO2"
-
-# ==================================================================
+    return q, 0, pos_norm, ori_norm, iters_svd + iters_qpso + k2, elapsed, "SVD2"
+ 
 def main():
     for robot in robots:
         DHfile = f"DH_{robot}.csv"
