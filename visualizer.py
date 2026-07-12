@@ -35,9 +35,9 @@ TOL_LEVELS = {
 }
 
 HYBRID_PARAMS = {
-    "antro":     {"lam": 0.194, "beta0": 0.25, "beta1": 1.0},
-    "Standford": {"lam": 0.601, "beta0": 0.05, "beta1": 0.65},
-    "DLR":       {"lam": 0.092, "beta0": 0.00, "beta1": 0.50},
+    "antro":     {"lam": 0.194, "beta0": 0.25, "beta1": 1.0, "lam1": 0.05},
+    "Standford": {"lam": 0.601, "beta0": 0.05, "beta1": 0.65, "lam1": 0.05},
+    "DLR":       {"lam": 0.092, "beta0": 0.00, "beta1": 0.50, "lam1": 0.05},
 }
 
 PHASE_COLORS = {"SVD": "#1565C0", "QPSO": "#E65100", "SVD2": "#2E7D32"}
@@ -254,7 +254,7 @@ def get_robot_points(DH, q):
 # ═══════════════════════════════════════════════════════════════
 #  SOLVER HÍBRIDO CON TRAZABILIDAD
 # ═══════════════════════════════════════════════════════════════
-def hybrid_solve_trace(DH, TARGET, lam, beta0, beta1, q0=None,
+def hybrid_solve_trace(DH, TARGET, lam, beta0, beta1, lam1, q0=None,
                        particles=n_particles, max_it=MAX_IT,
                        tol_pos=1e-2, tol_ori=1e-2,
                        stall_window=STALL_WINDOW, stall_eps=STALL_EPS,
@@ -388,7 +388,7 @@ def hybrid_solve_trace(DH, TARGET, lam, beta0, beta1, q0=None,
         v = qe[1:4]; vn = np.linalg.norm(v)
         e_ori = np.zeros(3) if vn < 1e-12 else (2.0*np.arctan2(vn, float(qe[0]))/vn)*v
         dx = np.vstack((e_pos.reshape(3,1), e_ori.reshape(3,1)))
-        q = clamp(q + dls(JAC(DH, q), dx, lam), limits)
+        q = clamp(q + dls(JAC(DH, q), dx, lam1), limits)
         k2 += 1
     return dict(qs=trace_q, phases=trace_phase,
                 pos_errs=trace_pos_err, ori_errs=trace_ori_err,
@@ -523,7 +523,7 @@ class RobotAnimator:
 
         self.trace = hybrid_solve_trace(
             self.DH, self.target_T,
-            self.params['lam'], self.params['beta0'], self.params['beta1'],
+            self.params['lam'], self.params['beta0'], self.params['beta1'], self.params['lam1'],
             q0=np.zeros(self.n_j), max_it=MAX_IT,
             tol_pos=self.tol_pos, tol_ori=self.tol_ori)
 
