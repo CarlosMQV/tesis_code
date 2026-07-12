@@ -16,9 +16,9 @@ robots = ["antro", "Standford", "DLR"]
 modes = ["easy", "hard"]
  
 HYBRID_PARAMS = {
-    "antro":    {"lam": 0.194, "beta0": 0.25, "beta1": 1.0},
-    "Standford":{"lam": 0.601, "beta0": 0.05, "beta1": 0.65},
-    "DLR":      {"lam": 0.092, "beta0": 0.00, "beta1": 0.50},
+    "antro":    {"lam": 0.194, "beta0": 0.25, "beta1": 1.0, "lam1":0.05},
+    "Standford":{"lam": 0.601, "beta0": 0.05, "beta1": 0.65, "lam1":0.05},
+    "DLR":      {"lam": 0.092, "beta0": 0.00, "beta1": 0.50, "lam1":0.05},
 }
  
 def load_csv(path):
@@ -256,7 +256,7 @@ def cost(DH, Q, TARGET):
         eos_arr[i] = math.sqrt(eo0*eo0 + eo1*eo1 + eo2*eo2)
     return totals, eps_arr, eos_arr
 
-def hybrid_solve(DH, TARGET, lam, beta0, beta1, q0=None,
+def hybrid_solve(DH, TARGET, lam, beta0, beta1, lam1, q0=None,
                   particles=n_particles, max_it=MAX_IT,
                   tol_pos=TOL_POS, tol_ori=TOL_ORI,
                   stall_window=STALL_WINDOW, stall_eps=STALL_EPS,
@@ -399,7 +399,7 @@ def hybrid_solve(DH, TARGET, lam, beta0, beta1, q0=None,
  
         dx = np.vstack((e_pos.reshape(3,1), e_ori.reshape(3,1)))
         J = JAC(DH, q)
-        dq = dls(J, dx, lam)
+        dq = dls(J, dx, lam1)
         q = clamp(q + dq, limits)
         k2 += 1
  
@@ -411,7 +411,7 @@ def main():
         DHfile = f"DH_{robot}.csv"
         DH = load_csv(DHfile)
         p = HYBRID_PARAMS[robot]
-        lam = p["lam"]; beta0 = p["beta0"]; beta1 = p["beta1"]
+        lam = p["lam"]; beta0 = p["beta0"]; beta1 = p["beta1"]; lam1 = p["lam1"]
         for mode in modes:
             TARGETfile = f"TARGETS/TARGET_{robot}_{mode}.csv"
             LOGfile = f"HYBRID/log_{robot}_{mode}.csv"
@@ -420,7 +420,7 @@ def main():
             Tlist = [row_to_T(Trows[i,:12]) for i in range(Trows.shape[0])]
             q0 = np.zeros(DH.shape[0])
             for i, Tt in enumerate(Tlist, 1):
-                qf, conv, pos, ori, its, elapsed, method = hybrid_solve(DH, Tt, lam, beta0, beta1, q0=q0)
+                qf, conv, pos, ori, its, elapsed, method = hybrid_solve(DH, Tt, lam, beta0, beta1, lam1, q0=q0)
                 J = JAC(DH, qf)
                 mu, kappa = manip(J)
                 dvs = dq_variations(DH, q0, qf)
