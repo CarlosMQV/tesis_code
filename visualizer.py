@@ -35,9 +35,9 @@ TOL_LEVELS = {
 }
 
 HYBRID_PARAMS = {
-    "antro":     {"lam": 0.194, "beta0": 0.25, "beta1": 1.0, "lam1": 0.05},
-    "Standford": {"lam": 0.601, "beta0": 0.05, "beta1": 0.65, "lam1": 0.05},
-    "DLR":       {"lam": 0.092, "beta0": 0.00, "beta1": 0.50, "lam1": 0.05},
+    "antro":     {"lam": 0.194, "beta0": 0.25, "beta1": 1.0, "lam1": 0.02},
+    "Standford": {"lam": 0.601, "beta0": 0.05, "beta1": 0.65, "lam1": 0.01},
+    "DLR":       {"lam": 0.092, "beta0": 0.00, "beta1": 0.50, "lam1": 0.005},
 }
 
 PHASE_COLORS = {"SVD": "#1565C0", "QPSO": "#E65100", "SVD2": "#2E7D32"}
