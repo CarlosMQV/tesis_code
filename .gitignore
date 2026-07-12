@@ -2,5 +2,3 @@
 **/__pycache__/
 *.py[cod]
 *$py.class
-# Ignore Visual Studio Code project settings
-.vscode/
