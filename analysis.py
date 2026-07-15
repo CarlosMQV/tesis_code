@@ -156,7 +156,7 @@ def plot_convergence_overview(df: pd.DataFrame, tab: pd.DataFrame) -> None:
     pooled["ci_high"] = [c[1] * 100 for c in ci]
     pooled.to_csv(OUT_STATS / "II_convergencia_resumen_pooled.csv", index=False)
 
-    fig, ax = plt.subplots(figsize=(7, 5))
+    fig, ax = plt.subplots(figsize=(5.5, 3.5))
     x = np.arange(len(METHODS))
     width = 0.35
     for i, tol in enumerate(TOLERANCES):
