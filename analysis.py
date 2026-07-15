@@ -156,7 +156,7 @@ def plot_convergence_overview(df: pd.DataFrame, tab: pd.DataFrame) -> None:
     pooled["ci_high"] = [c[1] * 100 for c in ci]
     pooled.to_csv(OUT_STATS / "II_convergencia_resumen_pooled.csv", index=False)
 
-    fig, ax = plt.subplots(figsize=(5.5, 3.5))
+    fig, ax = plt.subplots(figsize=(7, 5))
     x = np.arange(len(METHODS))
     width = 0.35
     for i, tol in enumerate(TOLERANCES):
@@ -673,17 +673,17 @@ def plot_time_common_convergent(df: pd.DataFrame) -> None:
 
 def plot_hybrid_iters_by_phase(df: pd.DataFrame) -> None:
     """2 imagenes (una por tolerancia), cada una con 3 subplots (uno por
-    robot) de beeswarm de iteraciones acumuladas por fase terminal.
+    robot) de puntos dispersos (stripplot, jitter + alpha) de iteraciones
+    acumuladas por fase terminal.
 
-    Nota de diseno: el hue="robot" con dodge (version anterior) triplicaba
-    el amontonamiento al dividir el ancho de cada categoria en 3 franjas.
-    Al facetar por robot en subplots separados, cada fase dispone del
-    ancho completo, reduciendo el solapamiento a un tercio del original.
-    El solapamiento remanente es en buena parte estructural y no un
-    problema de estilo: muchos casos no convergentes terminan exactamente
-    en n_iters == max_it (1000), lo que produce decenas de puntos con el
-    mismo valor que ningun ancho puede separar del todo. warn_thresh se
-    sube para no advertir sobre ese solapamiento esperado.
+    Nota de diseno: se reemplazo el swarmplot por un stripplot con jitter.
+    El swarmplot intenta acomodar cada punto sin solaparse, lo cual con
+    muchos casos no convergentes terminando exactamente en n_iters ==
+    max_it (1000) generaba una acumulacion masiva de puntos con el mismo
+    valor que ningun ancho podia separar. El stripplot con jitter no
+    intenta evitar el solape (lo distribuye aleatoriamente en el eje
+    categorico y usa alpha para que la concentracion real se note como
+    mayor opacidad), por lo que no genera ese problema.
 
     IMPORTANTE (limitacion de los datos): n_iters es un contador ACUMULADO
     de las 3 fases; el log no registra cuantas iteraciones exactas se
@@ -702,9 +702,9 @@ def plot_hybrid_iters_by_phase(df: pd.DataFrame) -> None:
             if s2.empty:
                 ax.axis("off")
                 continue
-            sns.swarmplot(data=s2, x="fase", y="n_iters", order=order,
-                          color=ROBOT_COLORS[robot], ax=ax, size=2.6,
-                          linewidth=0, warn_thresh=0.75)
+            sns.stripplot(data=s2, x="fase", y="n_iters", order=order,
+                          color=ROBOT_COLORS[robot], ax=ax, size=2.8,
+                          alpha=0.55, linewidth=0, jitter=0.25)
             ax.set_title(robot, fontsize=10)
             ax.set_xlabel("Fase terminal")
         axes[0].set_ylabel("n_iters acumulados")
