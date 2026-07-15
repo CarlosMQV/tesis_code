@@ -156,7 +156,7 @@ def plot_convergence_overview(df: pd.DataFrame, tab: pd.DataFrame) -> None:
     pooled["ci_high"] = [c[1] * 100 for c in ci]
     pooled.to_csv(OUT_STATS / "II_convergencia_resumen_pooled.csv", index=False)
 
-    fig, ax = plt.subplots(figsize=(5, 3.5))
+    fig, ax = plt.subplots(figsize=(5.5, 3.5))
     x = np.arange(len(METHODS))
     width = 0.35
     for i, tol in enumerate(TOLERANCES):
@@ -212,7 +212,7 @@ def plot_convergence_detail(tab: pd.DataFrame) -> None:
     for tol in TOLERANCES:
         for modo in MODES:
             sub = tab[(tab["tolerancia"] == tol) & (tab["modo"] == modo)]
-            fig, ax = plt.subplots(figsize=(5, 4))
+            fig, ax = plt.subplots(figsize=(5.5, 3.5))
             _grouped_bar_by_robot(ax, sub)
             ax.set_ylabel("Tasa de convergencia [%]")
             handles = [plt.Rectangle((0, 0), 1, 1, color=ROBOT_COLORS[r]) for r in ROBOTS]
@@ -345,7 +345,7 @@ def plot_hybrid_phase_breakdown(tabla: pd.DataFrame) -> None:
         sub = tabla[tabla["tolerancia"] == tol]
         if sub.empty:
             continue
-        fig, ax = plt.subplots(figsize=(9, 5.2))
+        fig, ax = plt.subplots(figsize=(6, 3.5))
         pos_cursor = 0
         group_centers = []
         xticks, xticklabels = [], []
@@ -449,7 +449,7 @@ def plot_kappa_failure(df: pd.DataFrame) -> None:
         if sub_m.empty:
             continue
         fig, axes = plt.subplots(1, len(TOLERANCES),
-                                  figsize=(6.5 * len(TOLERANCES), 5.2), sharey=True)
+                                  figsize=(8, 3.5), sharey=True)
         for ax, tol in zip(axes, TOLERANCES):
             sub = sub_m[sub_m["tolerancia"] == tol]
             if sub.empty:
@@ -471,7 +471,7 @@ def plot_kappa_failure(df: pd.DataFrame) -> None:
                 print(f"[AVISO] no se pudo graficar kappa para {metodo}/{tol}: {e}")
                 ax.axis("off")
                 continue
-            ax.set_ylim(-0.05, 1.05)
+            ax.set_ylim(bottom=-0.05, top=None)
             ax.set_xticks(range(len(orden_grupo)))
             ax.set_xticklabels([g.split("||")[1] for g in orden_grupo])
             ax.set_xlabel("")
@@ -505,7 +505,7 @@ def plot_density_residuals(df: pd.DataFrame) -> None:
         sub = noconv[noconv["tolerancia"] == tol]
         if sub.empty:
             continue
-        fig, axes = plt.subplots(1, 2, figsize=(10, 4.5))
+        fig, axes = plt.subplots(1, 2, figsize=(8, 3.5))
         for metodo in METHODS:
             s = sub[(sub["metodo"] == metodo) & (sub["pos_err"] > 0) & (sub["ori_err"] > 0)]
             if s.empty:
@@ -642,7 +642,7 @@ def plot_time_common_convergent(df: pd.DataFrame) -> None:
     comparables sobre el mismo conjunto exacto de poses."""
     for robot in ROBOTS:
         fig, axes = plt.subplots(1, len(TOLERANCES),
-                                  figsize=(5.2 * len(TOLERANCES), 4.6), sharey=True)
+                                  figsize=(7, 3.5), sharey=True)
         for ax, tol in zip(axes, TOLERANCES):
             sub = df[(df["tolerancia"] == tol) & (df["robot"] == robot)]
             pivot_conv = sub.pivot_table(index="pose_id", columns="metodo",
@@ -696,7 +696,7 @@ def plot_hybrid_iters_by_phase(df: pd.DataFrame) -> None:
         if sub.empty:
             continue
         order = [f for f in ["SVD", "QPSO", "SVD2"] if f in sub["fase"].unique()]
-        fig, axes = plt.subplots(1, len(ROBOTS), figsize=(4.6 * len(ROBOTS), 4.8), sharey=True)
+        fig, axes = plt.subplots(1, len(ROBOTS), figsize=(8, 3.5), sharey=True)
         for ax, robot in zip(axes, ROBOTS):
             s2 = sub[sub["robot"] == robot]
             if s2.empty:
