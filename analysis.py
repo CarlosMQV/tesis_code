@@ -156,7 +156,7 @@ def plot_convergence_overview(df: pd.DataFrame, tab: pd.DataFrame) -> None:
     pooled["ci_high"] = [c[1] * 100 for c in ci]
     pooled.to_csv(OUT_STATS / "II_convergencia_resumen_pooled.csv", index=False)
 
-    fig, ax = plt.subplots(figsize=(7, 5))
+    fig, ax = plt.subplots(figsize=(5, 3.5))
     x = np.arange(len(METHODS))
     width = 0.35
     for i, tol in enumerate(TOLERANCES):
@@ -207,26 +207,21 @@ def _grouped_bar_by_robot(ax, tab_sub, gap=1):
 
 
 def plot_convergence_detail(tab: pd.DataFrame) -> None:
-    """Imagen 2/2: una sola figura (grid tolerancia x modo) con barras
-    agrupadas por metodo y coloreadas por robot."""
-    fig, axes = plt.subplots(len(TOLERANCES), len(MODES),
-                              figsize=(5.5 * len(MODES), 4.3 * len(TOLERANCES)),
-                              sharey=True)
-    for i, tol in enumerate(TOLERANCES):
-        for j, modo in enumerate(MODES):
-            ax = axes[i, j]
+    """4 imagenes independientes (una por combinacion tolerancia x modo),
+    cada una con barras agrupadas por metodo y coloreadas por robot."""
+    for tol in TOLERANCES:
+        for modo in MODES:
             sub = tab[(tab["tolerancia"] == tol) & (tab["modo"] == modo)]
+            fig, ax = plt.subplots(figsize=(5, 4))
             _grouped_bar_by_robot(ax, sub)
-            ax.set_title(f"{tol} | {modo}", fontsize=10)
-            if j == 0:
-                ax.set_ylabel("Tasa de convergencia [%]")
-    handles = [plt.Rectangle((0, 0), 1, 1, color=ROBOT_COLORS[r]) for r in ROBOTS]
-    fig.legend(handles, ROBOTS, title="Robot", loc="upper center",
-               bbox_to_anchor=(0.5, 1.06), ncol=len(ROBOTS), frameon=False)
-    fig.suptitle("Convergencia por metodo, robot, modo y tolerancia", y=1.14)
-    fig.tight_layout()
-    fig.savefig(OUT_IMG / "convergencia_detalle_robot.png", bbox_inches="tight")
-    plt.close(fig)
+            ax.set_ylabel("Tasa de convergencia [%]")
+            handles = [plt.Rectangle((0, 0), 1, 1, color=ROBOT_COLORS[r]) for r in ROBOTS]
+            ax.legend(handles, ROBOTS, title="Robot", loc="upper center",
+                      bbox_to_anchor=(0.5, 1.2), ncol=len(ROBOTS), frameon=False)
+            # ax.set_title(f"Convergencia por metodo y robot - {tol} | {modo}", y=1.14)
+            fig.tight_layout()
+            fig.savefig(OUT_IMG / f"convergencia_detalle_{tol}_{modo}.png", bbox_inches="tight")
+            plt.close(fig)
 
 
 def run_gee(df: pd.DataFrame) -> None:
@@ -426,55 +421,77 @@ def failure_diagnostics(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def plot_kappa_failure(df: pd.DataFrame) -> None:
-    """4 imagenes totales (una por metodo). Cada una es un grid
-    tolerancia x robot de violines partidos (split) convergente/no
-    convergente, en escala LINEAL (kappa ya esta acotado en [0,1] por
-    construccion, por lo que el log solo comprimia la lectura)."""
+    """4 imagenes totales (una por metodo), 2 paneles por imagen (uno por
+    tolerancia, igual que las figuras de densidad). Robot y modo se
+    combinan en un eje de 6 columnas con separadores (mismo estilo que el
+    desglose de fases HYBRID).
+
+    Se reemplazo el violin por caja semi-transparente + puntos
+    individuales dispersos (jitter, alpha). El violin depende de una
+    estimacion de densidad (KDE): con kappa muy concentrado cerca de 0 o
+    1, o con N moderado por grupo, esa estimacion da siluetas
+    extremadamente delgadas e ilegibles. Caja+puntos no depende de
+    densidad, por lo que muestra la dispersion real sin ese artefacto.
+    Los dos paneles (uno por tolerancia) no se fusionaron en uno solo
+    porque ya hay 3 factores cruzados en cada panel (robot, modo, estado
+    de convergencia); anadir tolerancia como un cuarto factor en el mismo
+    eje habria vuelto a saturar la figura. Escala LINEAL: kappa esta
+    acotado en [0,1] por construccion."""
     d = df[df["kappa"].notna()].copy()
     d["estado_conv"] = d["converged"].map({1: "Convergió", 0: "No convergió"})
+    d["grupo"] = d["robot"] + "||" + d["modo"]
+    orden_grupo = [f"{r}||{m}" for r in ROBOTS for m in MODES]
+    group_centers = [(i * len(MODES) + (len(MODES) - 1) / 2) for i in range(len(ROBOTS))]
+    hue_order = ["Convergió", "No convergió"]
+
     for metodo in METHODS:
         sub_m = d[d["metodo"] == metodo]
         if sub_m.empty:
             continue
-        fig, axes = plt.subplots(len(TOLERANCES), len(ROBOTS),
-                                  figsize=(4.0 * len(ROBOTS), 3.6 * len(TOLERANCES)),
-                                  sharey=True)
-        for i, tol in enumerate(TOLERANCES):
-            for j, robot in enumerate(ROBOTS):
-                ax = axes[i, j]
-                sub = sub_m[(sub_m["tolerancia"] == tol) & (sub_m["robot"] == robot)]
-                if sub.empty:
-                    ax.axis("off")
-                    continue
-                estados_presentes = sub["estado_conv"].unique()
-                try:
-                    if len(estados_presentes) == 2:
-                        sns.violinplot(data=sub, x="modo", y="kappa", hue="estado_conv",
-                                        order=MODES, hue_order=["Convergió", "No convergió"],
-                                        split=True, inner="quartile", cut=0,
-                                        palette=CONV_COLORS, linewidth=0.8, ax=ax)
-                    else:
-                        sns.violinplot(data=sub, x="modo", y="kappa", hue="estado_conv",
-                                        order=MODES, cut=0, inner="quartile",
-                                        palette=CONV_COLORS, linewidth=0.8, ax=ax)
-                except Exception as e:
-                    print(f"[AVISO] no se pudo graficar violin para "
-                          f"{metodo}/{robot}/{tol}: {e}")
-                    ax.axis("off")
-                    continue
-                ax.set_ylim(-0.05, 1.05)
-                ax.set_title(f"{robot} | {tol}", fontsize=10)
-                ax.set_xlabel("")
-                ax.set_ylabel("kappa" if j == 0 else "")
-                leg = ax.get_legend()
-                if leg is not None:
-                    leg.remove()
-        handles = [plt.Rectangle((0, 0), 1, 1, color=CONV_COLORS[k])
-                   for k in ["Convergió", "No convergió"]]
-        fig.legend(handles, ["Convergió", "No convergió"], loc="upper center",
-                   bbox_to_anchor=(0.5, 1.04), ncol=2, frameon=False)
-        fig.suptitle(f"Distribucion de kappa en configuracion final - {metodo}", y=1.1)
-        fig.tight_layout()
+        fig, axes = plt.subplots(1, len(TOLERANCES),
+                                  figsize=(6.5 * len(TOLERANCES), 5.2), sharey=True)
+        for ax, tol in zip(axes, TOLERANCES):
+            sub = sub_m[sub_m["tolerancia"] == tol]
+            if sub.empty:
+                ax.axis("off")
+                continue
+            try:
+                sns.boxplot(data=sub, x="grupo", y="kappa", hue="estado_conv",
+                            order=orden_grupo, hue_order=hue_order,
+                            palette=CONV_COLORS, ax=ax, showfliers=False,
+                            width=0.55, linewidth=0.9, gap=0.15,
+                            boxprops=dict(alpha=0.32), whiskerprops=dict(alpha=0.7),
+                            capprops=dict(alpha=0.7), medianprops=dict(alpha=0.9))
+                sns.stripplot(data=sub, x="grupo", y="kappa", hue="estado_conv",
+                              order=orden_grupo, hue_order=hue_order,
+                              palette=CONV_COLORS, ax=ax, dodge=True,
+                              size=3.0, alpha=0.55, linewidth=0, jitter=0.22,
+                              legend=False)
+            except Exception as e:
+                print(f"[AVISO] no se pudo graficar kappa para {metodo}/{tol}: {e}")
+                ax.axis("off")
+                continue
+            ax.set_ylim(-0.05, 1.05)
+            ax.set_xticks(range(len(orden_grupo)))
+            ax.set_xticklabels([g.split("||")[1] for g in orden_grupo])
+            ax.set_xlabel("")
+            ax.set_title(tol, fontsize=11)
+            leg = ax.get_legend()
+            if leg is not None:
+                leg.remove()
+            for g in range(1, len(ROBOTS)):
+                sep_x = g * len(MODES) - 0.5
+                ax.axvline(sep_x, color="#bbbbbb", linestyle="--", linewidth=0.7, zorder=0)
+            for center, robot in zip(group_centers, ROBOTS):
+                ax.annotate(robot, xy=(center, 0), xycoords=("data", "axes fraction"),
+                            xytext=(0, -30), textcoords="offset points",
+                            ha="center", va="top", fontsize=9, fontweight="bold")
+        axes[0].set_ylabel("kappa")
+        handles = [plt.Rectangle((0, 0), 1, 1, color=CONV_COLORS[k]) for k in hue_order]
+        fig.legend(handles, hue_order, loc="upper center",
+                   bbox_to_anchor=(0.5, 1.06), ncol=2, frameon=False)
+        fig.suptitle(f"Distribucion de kappa en configuracion final - {metodo}", y=1.16)
+        fig.subplots_adjust(bottom=0.22)
         fig.savefig(OUT_IMG / f"kappa_falla_{metodo}.png", bbox_inches="tight")
         plt.close(fig)
 
