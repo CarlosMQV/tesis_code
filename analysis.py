@@ -55,7 +55,7 @@ OUT_IMG.mkdir(parents=True, exist_ok=True)
 # ESTILO: paleta y tipografia. Cambiar solo PALETTE para re-tematizar
 # todas las figuras.
 # ----------------------------------------------------------------------
-PALETTE = ["#94A8FF", "#E08579", "#F5F390", "#A2DFEB", "#EB88DC"]
+PALETTE = ["#AABDFF", "#F8D3AD", "#FEB3C2", "#CCEDCE", "#E98688"]
 
 
 def derive_palette(n):
@@ -169,7 +169,7 @@ def plot_convergence_overview(df: pd.DataFrame, tab: pd.DataFrame) -> None:
     ax.set_xticklabels(METHODS)
     ax.set_ylabel("Tasa de convergencia [%]")
     ax.set_ylim(0, 105)
-    ax.set_title("Convergencia global por metodo y tolerancia (IC95% Wilson)")
+    # ax.set_title("Convergencia global por metodo y tolerancia (IC95% Wilson)")
     ax.legend(title="Tolerancia")
     fig.tight_layout()
     fig.savefig(OUT_IMG / "convergencia_global_overview.png", bbox_inches="tight")
@@ -380,7 +380,7 @@ def plot_hybrid_phase_breakdown(tabla: pd.DataFrame) -> None:
         handles = [plt.Rectangle((0, 0), 1, 1, color=phase_colors[f]) for f in fases_presentes]
         ax.legend(handles, fases_presentes, title="Fase", loc="upper center",
                   bbox_to_anchor=(0.5, 1.16), ncol=min(len(fases_presentes), 6), frameon=False)
-        fig.suptitle(f"Fase de resolucion HYBRID por robot y modo ({tol})", y=1.06)
+        # fig.suptitle(f"Fase de resolucion HYBRID por robot y modo ({tol})", y=1.06)
         fig.subplots_adjust(bottom=0.22)
         fig.savefig(OUT_IMG / f"hybrid_desglose_fases_{tol}.png", bbox_inches="tight")
         plt.close(fig)
@@ -490,7 +490,7 @@ def plot_kappa_failure(df: pd.DataFrame) -> None:
         handles = [plt.Rectangle((0, 0), 1, 1, color=CONV_COLORS[k]) for k in hue_order]
         fig.legend(handles, hue_order, loc="upper center",
                    bbox_to_anchor=(0.5, 1.06), ncol=2, frameon=False)
-        fig.suptitle(f"Distribucion de kappa en configuracion final - {metodo}", y=1.16)
+        # fig.suptitle(f"Distribucion de kappa en configuracion final - {metodo}", y=1.16)
         fig.subplots_adjust(bottom=0.22)
         fig.savefig(OUT_IMG / f"kappa_falla_{metodo}.png", bbox_inches="tight")
         plt.close(fig)
@@ -524,7 +524,7 @@ def plot_density_residuals(df: pd.DataFrame) -> None:
         axes[1].set_ylabel("Densidad")
         axes[0].legend()
         axes[1].legend()
-        fig.suptitle(f"Densidad de errores residuales en casos no convergentes ({tol})")
+        # fig.suptitle(f"Densidad de errores residuales en casos no convergentes ({tol})")
         fig.tight_layout()
         fig.savefig(OUT_IMG / f"densidad_residuales_{tol}.png", bbox_inches="tight")
         plt.close(fig)
@@ -665,7 +665,7 @@ def plot_time_common_convergent(df: pd.DataFrame) -> None:
             ax.set_title(f"{tol} (n={len(common_ids)})", fontsize=10)
             ax.set_xlabel("Metodo")
         axes[0].set_ylabel("Tiempo [s] (log)")
-        fig.suptitle(f"Tiempo de computo, subset convergente comun - {robot}", y=1.03)
+        # fig.suptitle(f"Tiempo de computo, subset convergente comun - {robot}", y=1.03)
         fig.tight_layout()
         fig.savefig(OUT_IMG / f"tiempo_computo_{robot}.png", bbox_inches="tight")
         plt.close(fig)
@@ -708,7 +708,7 @@ def plot_hybrid_iters_by_phase(df: pd.DataFrame) -> None:
             ax.set_title(robot, fontsize=10)
             ax.set_xlabel("Fase terminal")
         axes[0].set_ylabel("n_iters acumulados")
-        fig.suptitle(f"Iteraciones acumuladas hasta la fase terminal (HYBRID, {tol})", y=1.04)
+        # fig.suptitle(f"Iteraciones acumuladas hasta la fase terminal (HYBRID, {tol})", y=1.04)
         fig.tight_layout()
         fig.savefig(OUT_IMG / f"hybrid_iters_por_fase_{tol}.png", bbox_inches="tight")
         plt.close(fig)
