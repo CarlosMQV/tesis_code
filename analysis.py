@@ -212,7 +212,7 @@ def plot_convergence_detail(tab: pd.DataFrame) -> None:
     for tol in TOLERANCES:
         for modo in MODES:
             sub = tab[(tab["tolerancia"] == tol) & (tab["modo"] == modo)]
-            fig, ax = plt.subplots(figsize=(5.5, 3.5))
+            fig, ax = plt.subplots(figsize=(5.5, 3))
             _grouped_bar_by_robot(ax, sub)
             ax.set_ylabel("Tasa de convergencia [%]")
             handles = [plt.Rectangle((0, 0), 1, 1, color=ROBOT_COLORS[r]) for r in ROBOTS]
@@ -345,7 +345,7 @@ def plot_hybrid_phase_breakdown(tabla: pd.DataFrame) -> None:
         sub = tabla[tabla["tolerancia"] == tol]
         if sub.empty:
             continue
-        fig, ax = plt.subplots(figsize=(6, 3.5))
+        fig, ax = plt.subplots(figsize=(6, 3))
         pos_cursor = 0
         group_centers = []
         xticks, xticklabels = [], []
@@ -449,7 +449,7 @@ def plot_kappa_failure(df: pd.DataFrame) -> None:
         if sub_m.empty:
             continue
         fig, axes = plt.subplots(1, len(TOLERANCES),
-                                  figsize=(8, 3.5), sharey=True)
+                                  figsize=(7, 3), sharey=True)
         for ax, tol in zip(axes, TOLERANCES):
             sub = sub_m[sub_m["tolerancia"] == tol]
             if sub.empty:
@@ -505,7 +505,7 @@ def plot_density_residuals(df: pd.DataFrame) -> None:
         sub = noconv[noconv["tolerancia"] == tol]
         if sub.empty:
             continue
-        fig, axes = plt.subplots(1, 2, figsize=(8, 3.5))
+        fig, axes = plt.subplots(1, 2, figsize=(7, 3))
         for metodo in METHODS:
             s = sub[(sub["metodo"] == metodo) & (sub["pos_err"] > 0) & (sub["ori_err"] > 0)]
             if s.empty:
@@ -696,7 +696,7 @@ def plot_hybrid_iters_by_phase(df: pd.DataFrame) -> None:
         if sub.empty:
             continue
         order = [f for f in ["SVD", "QPSO", "SVD2"] if f in sub["fase"].unique()]
-        fig, axes = plt.subplots(1, len(ROBOTS), figsize=(8, 3.5), sharey=True)
+        fig, axes = plt.subplots(1, len(ROBOTS), figsize=(7, 3), sharey=True)
         for ax, robot in zip(axes, ROBOTS):
             s2 = sub[sub["robot"] == robot]
             if s2.empty:
